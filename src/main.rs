@@ -4,7 +4,9 @@ use std::path::Path;
 use std::fs;
 use std::collections::HashMap;
 use std::io::Read;
-use rayon::prelude::*; // Add rayon dependency
+use rayon::prelude::*;
+// Add rayon dependency
+use simple_tqdm::{ParTqdm};
 
 fn main() {
     let bpe = cl100k_base().unwrap();
@@ -18,6 +20,7 @@ fn main() {
 
         // Process files in parallel
         let token_counts: HashMap<String, i32> = all_files.into_par_iter()
+            .tqdm()
             .map(|path| process_file(&path, &bpe))
             .reduce(HashMap::new, |mut acc, item| {
                 for (ext, count) in item {
@@ -82,5 +85,6 @@ fn count_tokens(path: &Path, tokenizer: &CoreBPE) -> i32 {
         return 0;
     }
     let tokens = tokenizer.encode_with_special_tokens(&contents);
+    drop(contents);
     tokens.len() as i32
 }

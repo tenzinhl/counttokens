@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 rayon = "1.8.1"
+simple-tqdm = { version = "0.1.4", features = ["rayon"] }
 tiktoken-rs = "0.5.8"
