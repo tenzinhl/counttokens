@@ -4,46 +4,69 @@ use std::path::Path;
 use std::fs;
 use std::collections::HashMap;
 use std::io::Read;
+use rayon::prelude::*; // Add rayon dependency
 
 fn main() {
     let bpe = cl100k_base().unwrap();
     let args: Vec<String> = env::args().collect();
     let file_extensions: Vec<String> = if args.len() > 1 { args[1..].to_vec() } else { Vec::new() };
-    let mut token_counts: HashMap<String, i32> = HashMap::new();
 
     let dir = Path::new(".");
     if dir.is_dir() {
-        iterate_files(&dir, &file_extensions, &mut token_counts, &bpe);
-    }
+        // Find all files
+        let all_files: Vec<_> = find_files_parallel(dir, &file_extensions);
 
-    // Sort HashMap by token count and convert it into a vector of tuples
-    let mut token_counts_vec: Vec<(&String, &i32)> = token_counts.iter().collect();
-    token_counts_vec.sort_by(|a, b| b.1.cmp(a.1));
+        // Process files in parallel
+        let token_counts: HashMap<String, i32> = all_files.into_par_iter()
+            .map(|path| process_file(&path, &bpe))
+            .reduce(HashMap::new, |mut acc, item| {
+                for (ext, count) in item {
+                    *acc.entry(ext).or_insert(0) += count;
+                }
+                acc
+            });
 
-    for &(extension, &count) in token_counts_vec.iter() {
-        if count > 0 {
-            println!("{}: {}", extension, count);
+        // Sort HashMap by token count and convert it into a vector of tuples
+        let mut token_counts_vec: Vec<(&String, &i32)> = token_counts.iter().collect();
+        token_counts_vec.sort_by(|a, b| b.1.cmp(a.1));
+        for &(extension, &count) in token_counts_vec.iter() {
+            if count > 0 {
+                println!("{}: {}", extension, count);
+            }
         }
     }
 }
 
-fn iterate_files(dir: &Path, file_extensions: &Vec<String>, token_counts: &mut HashMap<String, i32>, tokenizer: &CoreBPE) {
-    for entry in fs::read_dir(dir).expect("Unable to read directory") {
-        let entry = entry.expect("Unable to read entry");
-        let path = entry.path();
-        if path.is_dir() {
-            iterate_files(&path, file_extensions, token_counts, tokenizer);
-        } else {
-            let extension = path.extension()
-                .and_then(std::ffi::OsStr::to_str)
-                .unwrap_or("");
-            if file_extensions.is_empty() || file_extensions.contains(&extension.to_string()) {
-                let count = count_tokens(&path, tokenizer);
-                let entry = token_counts.entry(extension.to_string()).or_insert(0);
-                *entry += count;
+fn find_files_parallel(dir: &Path, file_extensions: &Vec<String>) -> Vec<std::path::PathBuf> {
+    fs::read_dir(dir)
+        .expect("Unable to read directory")
+        .par_bridge() // Utilize rayon's par_bridge
+        .flat_map(|entry| {
+            let entry = entry.expect("Unable to read entry");
+            let path = entry.path();
+            if path.is_dir() {
+                find_files_parallel(&path, file_extensions)
+            } else if file_extensions.is_empty()
+                || file_extensions.contains(
+                &path.extension().and_then(std::ffi::OsStr::to_str).unwrap_or("").to_string()
+            )
+            {
+                vec![path]
+            } else {
+                vec![]
             }
-        }
-    }
+        })
+        .collect()
+}
+
+fn process_file(path: &Path, tokenizer: &CoreBPE) -> HashMap<String, i32> {
+    let mut token_counts = HashMap::new();
+    let extension = path.extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("");
+    let count = count_tokens(path, tokenizer);
+    token_counts.insert(extension.to_string(), count);
+    token_counts
 }
 
 fn count_tokens(path: &Path, tokenizer: &CoreBPE) -> i32 {
@@ -56,7 +79,7 @@ fn count_tokens(path: &Path, tokenizer: &CoreBPE) -> i32 {
     };
     let mut contents = String::new();
     if file.read_to_string(&mut contents).is_err() {
-        return 0
+        return 0;
     }
     let tokens = tokenizer.encode_with_special_tokens(&contents);
     tokens.len() as i32
