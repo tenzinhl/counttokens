@@ -42,25 +42,26 @@ fn main() {
 }
 
 fn find_files_parallel(dir: &Path, file_extensions: &Vec<String>) -> Vec<std::path::PathBuf> {
-    fs::read_dir(dir)
-        .expect("Unable to read directory")
-        .par_bridge() // Utilize rayon's par_bridge
-        .flat_map(|entry| {
-            let entry = entry.expect("Unable to read entry");
-            let path = entry.path();
-            if path.is_dir() {
-                find_files_parallel(&path, file_extensions)
-            } else if file_extensions.is_empty()
-                || file_extensions.contains(
-                &path.extension().and_then(std::ffi::OsStr::to_str).unwrap_or("").to_string()
-            )
-            {
-                vec![path]
-            } else {
-                vec![]
-            }
-        })
-        .collect()
+    match fs::read_dir(dir) {
+        Ok(dir) => dir.par_bridge() // Utilize rayon's par_bridge
+            .flat_map(|entry| {
+                let entry = entry.expect("Unable to read entry");
+                let path = entry.path();
+                if path.is_dir() {
+                    find_files_parallel(&path, file_extensions)
+                } else if file_extensions.is_empty()
+                    || file_extensions.contains(
+                    &path.extension().and_then(std::ffi::OsStr::to_str).unwrap_or("").to_string()
+                )
+                {
+                    vec![path]
+                } else {
+                    vec![]
+                }
+            })
+            .collect(),
+        Err(_) => vec![]
+    }
 }
 
 fn process_file(path: &Path, tokenizer: &CoreBPE) -> HashMap<String, i32> {
