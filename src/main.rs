@@ -37,6 +37,8 @@ fn main() {
                 println!("{}: {}", extension, count);
             }
         }
+        // Print the token number of tokens
+        println!("Total: {}", token_counts_vec.iter().map(|(_, count)| *count).sum::<i32>());
     }
 }
 
@@ -82,9 +84,12 @@ fn count_tokens(path: &Path, tokenizer: &CoreBPE) -> i32 {
     };
     let mut contents = String::new();
     if file.read_to_string(&mut contents).is_err() {
+        drop(contents);
         return 0;
     }
     let tokens = tokenizer.encode_with_special_tokens(&contents);
+    let num_tokens = tokens.len() as i32;
     drop(contents);
-    tokens.len() as i32
+    drop(tokens);
+    num_tokens
 }
