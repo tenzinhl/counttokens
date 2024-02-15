@@ -87,5 +87,6 @@ fn count_tokens(path: &Path, tokenizer: &CoreBPE) -> i32 {
         return 0;
     }
     let tokens = tokenizer.encode_with_special_tokens(&contents);
+    drop(contents);
     tokens.len() as i32
 }
