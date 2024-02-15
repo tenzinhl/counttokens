@@ -8,9 +8,7 @@ use std::io::Read;
 fn main() {
     let bpe = cl100k_base().unwrap();
     let args: Vec<String> = env::args().collect();
-    let file_extensions: Vec<String> = args[1..].to_vec();
-
-    // we'll store the token counts for each file extension here
+    let file_extensions: Vec<String> = if args.len() > 1 { args[1..].to_vec() } else { Vec::new() };
     let mut token_counts: HashMap<String, i32> = HashMap::new();
 
     let dir = Path::new(".");
@@ -18,8 +16,14 @@ fn main() {
         iterate_files(&dir, &file_extensions, &mut token_counts, &bpe);
     }
 
-    for (extension, count) in token_counts {
-        println!("{}: {}", extension, count);
+    // Sort HashMap by token count and convert it into a vector of tuples
+    let mut token_counts_vec: Vec<(&String, &i32)> = token_counts.iter().collect();
+    token_counts_vec.sort_by(|a, b| b.1.cmp(a.1));
+
+    for &(extension, &count) in token_counts_vec.iter() {
+        if count > 0 {
+            println!("{}: {}", extension, count);
+        }
     }
 }
 
@@ -33,7 +37,7 @@ fn iterate_files(dir: &Path, file_extensions: &Vec<String>, token_counts: &mut H
             let extension = path.extension()
                 .and_then(std::ffi::OsStr::to_str)
                 .unwrap_or("");
-            if file_extensions.contains(&extension.to_string()) {
+            if file_extensions.is_empty() || file_extensions.contains(&extension.to_string()) {
                 let count = count_tokens(&path, tokenizer);
                 let entry = token_counts.entry(extension.to_string()).or_insert(0);
                 *entry += count;
@@ -43,9 +47,17 @@ fn iterate_files(dir: &Path, file_extensions: &Vec<String>, token_counts: &mut H
 }
 
 fn count_tokens(path: &Path, tokenizer: &CoreBPE) -> i32 {
-    let mut file = fs::File::open(&path).expect("Unable to open file");
+    let file = fs::File::open(&path);
+    let mut file = match file {
+        Ok(f) => f,
+        Err(_) => {
+            return 0;
+        }
+    };
     let mut contents = String::new();
-    file.read_to_string(&mut contents).expect("Unable to read file");
+    if file.read_to_string(&mut contents).is_err() {
+        return 0
+    }
     let tokens = tokenizer.encode_with_special_tokens(&contents);
     tokens.len() as i32
 }
