@@ -5,7 +5,6 @@ use std::fs;
 use std::collections::HashMap;
 use std::io::Read;
 use rayon::prelude::*;
-// Add rayon dependency
 use simple_tqdm::{ParTqdm};
 
 fn main() {
@@ -84,12 +83,8 @@ fn count_tokens(path: &Path, tokenizer: &CoreBPE) -> i32 {
     };
     let mut contents = String::new();
     if file.read_to_string(&mut contents).is_err() {
-        drop(contents);
         return 0;
     }
     let tokens = tokenizer.encode_with_special_tokens(&contents);
-    let num_tokens = tokens.len() as i32;
-    drop(contents);
-    drop(tokens);
-    num_tokens
+    tokens.len() as i32
 }
