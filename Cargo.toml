@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+num-format = { version = "0.4.4" , features = ["with-system-locale"]}
 rayon = "1.8.1"
 simple-tqdm = { version = "0.1.4", features = ["rayon"] }
 tiktoken-rs = "0.5.8"

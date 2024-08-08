@@ -6,11 +6,13 @@ use std::collections::HashMap;
 use std::io::Read;
 use rayon::prelude::*;
 use simple_tqdm::{ParTqdm};
+use num_format::{SystemLocale, ToFormattedString};
 
 fn main() {
     let bpe = cl100k_base().unwrap();
     let args: Vec<String> = env::args().collect();
     let file_extensions: Vec<String> = if args.len() > 1 { args[1..].to_vec() } else { Vec::new() };
+    let locale = SystemLocale::default().unwrap();
 
     let dir = Path::new(".");
     if dir.is_dir() {
@@ -33,11 +35,14 @@ fn main() {
         token_counts_vec.sort_by(|a, b| b.1.cmp(a.1));
         for &(extension, &count) in token_counts_vec.iter() {
             if count > 0 {
-                println!("{}: {}", extension, count);
+                let formatted_count = count.to_formatted_string(&locale);
+                println!("{}: {}", extension, formatted_count);
             }
         }
         // Print the token number of tokens
-        println!("Total: {}", token_counts_vec.iter().map(|(_, count)| *count).sum::<i32>());
+        let count = token_counts_vec.iter().map(|(_, count)| *count).sum::<i32>();
+        let formatted_count = count.to_formatted_string(&locale);
+        println!("Total: {}", formatted_count);
     }
 }
 
