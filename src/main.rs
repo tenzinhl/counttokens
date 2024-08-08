@@ -1,5 +1,5 @@
 use tiktoken_rs::{cl100k_base, CoreBPE};
-use std::env;
+use std::{env, panic};
 use std::path::Path;
 use std::fs;
 use std::collections::HashMap;
@@ -86,7 +86,13 @@ fn count_tokens(path: &Path, tokenizer: &CoreBPE) -> i32 {
     if file.read_to_string(&mut contents).is_err() {
         return 0;
     }
-    let tokens = tokenizer.encode_with_special_tokens(&contents);
+    let result = panic::catch_unwind(|| {
+        let tokens = tokenizer.encode_with_special_tokens(&contents);
+        tokens.len() as i32
+    });
     drop(contents);
-    tokens.len() as i32
+    result.unwrap_or_else(|_| {
+        println!("Error while processing file: {}", path.display());
+        0
+    })
 }
