@@ -5,44 +5,60 @@ use std::fs;
 use std::collections::HashMap;
 use std::io::Read;
 use rayon::prelude::*;
-use simple_tqdm::{ParTqdm};
+use simple_tqdm::ParTqdm;
 use num_format::{SystemLocale, ToFormattedString};
+
+struct FileStats {
+    token_count: i32,
+    line_count: i32,
+    file_count: i32,
+}
 
 fn main() {
     let bpe = cl100k_base().unwrap();
     let args: Vec<String> = env::args().collect();
-    let file_extensions: Vec<String> = if args.len() > 1 { args[1..].to_vec() } else { Vec::new() };
+    let file_extensions: Vec<String> = args[1..].to_vec();
+
     let locale = SystemLocale::default().unwrap();
 
     let dir = Path::new(".");
     if dir.is_dir() {
-        // Find all files
         let all_files: Vec<_> = find_files_parallel(dir, &file_extensions);
 
-        // Process files in parallel
-        let token_counts: HashMap<String, i32> = all_files.into_par_iter()
+        let file_stats: HashMap<String, FileStats> = all_files.into_par_iter()
             .tqdm()
             .map(|path| process_file(&path, &bpe))
             .reduce(HashMap::new, |mut acc, item| {
-                for (ext, count) in item {
-                    *acc.entry(ext).or_insert(0) += count;
+                for (ext, stats) in item {
+                    let entry = acc.entry(ext).or_insert(FileStats { token_count: 0, line_count: 0, file_count: 0 });
+                    entry.token_count += stats.token_count;
+                    entry.line_count += stats.line_count;
+                    entry.file_count += stats.file_count;
                 }
                 acc
             });
 
-        // Sort HashMap by token count and convert it into a vector of tuples
-        let mut token_counts_vec: Vec<(&String, &i32)> = token_counts.iter().collect();
-        token_counts_vec.sort_by(|a, b| b.1.cmp(a.1));
-        for &(extension, &count) in token_counts_vec.iter() {
-            if count > 0 {
-                let formatted_count = count.to_formatted_string(&locale);
-                println!("{}: {}", extension, formatted_count);
+        let mut file_stats_vec: Vec<(&String, &FileStats)> = file_stats.iter().collect();
+        file_stats_vec.sort_by(|a, b| b.1.token_count.cmp(&a.1.token_count));
+
+        for (extension, stats) in file_stats_vec.iter() {
+            if stats.token_count > 0 {
+                let formatted_token_count = stats.token_count.to_formatted_string(&locale);
+                let formatted_line_count = stats.line_count.to_formatted_string(&locale);
+                let formatted_file_count = stats.file_count.to_formatted_string(&locale);
+                println!("{}: {} tokens, {} lines, {} files", extension, formatted_token_count, formatted_line_count, formatted_file_count);
             }
         }
-        // Print the token number of tokens
-        let count = token_counts_vec.iter().map(|(_, count)| *count).sum::<i32>();
-        let formatted_count = count.to_formatted_string(&locale);
-        println!("Total: {}", formatted_count);
+
+        let total_tokens: i32 = file_stats_vec.iter().map(|(_, stats)| stats.token_count).sum();
+        let total_lines: i32 = file_stats_vec.iter().map(|(_, stats)| stats.line_count).sum();
+        let total_files: i32 = file_stats_vec.iter().map(|(_, stats)| stats.file_count).sum();
+
+        let formatted_total_tokens = total_tokens.to_formatted_string(&locale);
+        let formatted_total_lines = total_lines.to_formatted_string(&locale);
+        let formatted_total_files = total_files.to_formatted_string(&locale);
+
+        println!("Total: {} tokens, {} lines, {} files", formatted_total_tokens, formatted_total_lines, formatted_total_files);
     }
 }
 
@@ -69,35 +85,41 @@ fn find_files_parallel(dir: &Path, file_extensions: &Vec<String>) -> Vec<std::pa
     }
 }
 
-fn process_file(path: &Path, tokenizer: &CoreBPE) -> HashMap<String, i32> {
-    let mut token_counts = HashMap::new();
+fn process_file(path: &Path, tokenizer: &CoreBPE) -> HashMap<String, FileStats> {
+    let mut file_stats = HashMap::new();
     let extension = path.extension()
         .and_then(std::ffi::OsStr::to_str)
         .unwrap_or("");
-    let count = count_tokens(path, tokenizer);
-    token_counts.insert(extension.to_string(), count);
-    token_counts
+
+    let stats = count_tokens_and_lines(path, tokenizer);
+    file_stats.insert(extension.to_string(), stats);
+    file_stats
 }
 
-fn count_tokens(path: &Path, tokenizer: &CoreBPE) -> i32 {
+fn count_tokens_and_lines(path: &Path, tokenizer: &CoreBPE) -> FileStats {
     let file = fs::File::open(&path);
     let mut file = match file {
         Ok(f) => f,
-        Err(_) => {
-            return 0;
-        }
+        Err(_) => return FileStats { token_count: 0, line_count: 0, file_count: 1 },
     };
+
     let mut contents = String::new();
     if file.read_to_string(&mut contents).is_err() {
-        return 0;
+        return FileStats { token_count: 0, line_count: 0, file_count: 1 };
     }
+
     let result = panic::catch_unwind(|| {
         let tokens = tokenizer.encode_with_special_tokens(&contents);
-        tokens.len() as i32
+        let line_count = contents.lines().count() as i32;
+        FileStats {
+            token_count: tokens.len() as i32,
+            line_count,
+            file_count: 1,
+        }
     });
-    drop(contents);
+
     result.unwrap_or_else(|_| {
         println!("Error while processing file: {}", path.display());
-        0
+        FileStats { token_count: 0, line_count: 0, file_count: 1 }
     })
 }
