@@ -14,16 +14,47 @@ struct FileStats {
     file_count: i32,
 }
 
+struct Args {
+    directory: String,
+    file_extensions: Vec<String>,
+}
+
+fn parse_args() -> Args {
+    let args: Vec<String> = env::args().collect();
+    let mut directory = String::from(".");
+    let mut file_extensions = Vec::new();
+    let mut i = 1;
+
+    while i < args.len() {
+        match args[i].as_str() {
+            "-d" => {
+                if i + 1 < args.len() {
+                    directory = args[i + 1].clone();
+                    i += 2;
+                } else {
+                    eprintln!("Error: -d option requires a directory path");
+                    std::process::exit(1);
+                }
+            }
+            _ => {
+                file_extensions.push(args[i].clone());
+                i += 1;
+            }
+        }
+    }
+
+    Args { directory, file_extensions }
+}
+
 fn main() {
     let bpe = cl100k_base().unwrap();
-    let args: Vec<String> = env::args().collect();
-    let file_extensions: Vec<String> = args[1..].to_vec();
+    let args = parse_args();
 
     let locale = SystemLocale::default().unwrap();
 
-    let dir = Path::new(".");
+    let dir = Path::new(&args.directory);
     if dir.is_dir() {
-        let all_files: Vec<_> = find_files_parallel(dir, &file_extensions);
+        let all_files: Vec<_> = find_files_parallel(dir, &args.file_extensions);
 
         let file_stats: HashMap<String, FileStats> = all_files.into_par_iter()
             .tqdm()
@@ -50,18 +81,22 @@ fn main() {
             }
         }
 
-        let total_tokens: i32 = file_stats_vec.iter().map(|(_, stats)| stats.token_count).sum();
-        let total_lines: i32 = file_stats_vec.iter().map(|(_, stats)| stats.line_count).sum();
-        let total_files: i32 = file_stats_vec.iter().map(|(_, stats)| stats.file_count).sum();
+        // Don't print the totals if there is only 1 file extension
+        if file_stats_vec.len() > 1 {
+            let total_tokens: i32 = file_stats_vec.iter().map(|(_, stats)| stats.token_count).sum();
+            let total_lines: i32 = file_stats_vec.iter().map(|(_, stats)| stats.line_count).sum();
+            let total_files: i32 = file_stats_vec.iter().map(|(_, stats)| stats.file_count).sum();
 
-        let formatted_total_tokens = total_tokens.to_formatted_string(&locale);
-        let formatted_total_lines = total_lines.to_formatted_string(&locale);
-        let formatted_total_files = total_files.to_formatted_string(&locale);
+            let formatted_total_tokens = total_tokens.to_formatted_string(&locale);
+            let formatted_total_lines = total_lines.to_formatted_string(&locale);
+            let formatted_total_files = total_files.to_formatted_string(&locale);
 
-        println!("Total: {} tokens, {} lines, {} files", formatted_total_tokens, formatted_total_lines, formatted_total_files);
+            println!("Total: {} tokens, {} lines, {} files", formatted_total_tokens, formatted_total_lines, formatted_total_files);
+        }
+    } else {
+        eprintln!("Error: The specified directory does not exist or is not a directory");
     }
 }
-
 fn find_files_parallel(dir: &Path, file_extensions: &Vec<String>) -> Vec<std::path::PathBuf> {
     match fs::read_dir(dir) {
         Ok(dir) => dir.par_bridge() // Utilize rayon's par_bridge
