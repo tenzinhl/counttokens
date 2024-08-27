@@ -1,40 +1,69 @@
-**Token Counter**
+# Token Counter
 
-This program counts the number of tokens within files of specified extensions in a given directory. It utilizes the `tiktoken_rs` library for tokenization and `rayon` for efficient parallel processing.
+This Rust project provides a command-line tool for counting tokens, lines, and files in a specified directory. It uses the `tiktoken_rs` library for tokenization and supports parallel processing for improved performance.
 
-**How it Works**
+## Features
 
-1. **Configuration:** The program optionally takes command-line arguments to specify file extensions to process. If no extensions are provided, all files will be considered.
-2. **File Discovery:** The program recursively searches the provided directory (defaulting to the current directory) and builds a list of files matching the target extensions. File discovery is made faster through parallelization using the `rayon` library.
-3. **Tokenization and Counting:** The program processes each file in parallel:
-     * The file's contents are read.
-     * The `tiktoken_rs` library's `cl100k_base` model is used to tokenize the content.
-     * The total number of tokens is counted.
-4. **Results:** Token counts are aggregated by file extension. The program then displays a sorted list of extensions and their corresponding token counts.
+- Count tokens, lines, and files for specified file extensions
+- Parallel processing using Rayon for faster execution
+- Support for multiple file extensions
+- Progress bar using `simple_tqdm`
+- Formatted output using `num_format`
 
-**Dependencies**
+## Usage
 
-* Rust ([https://www.rust-lang.org/](https://www.rust-lang.org/))
-* `tiktoken_rs` crate
-* `rayon` crate
-
-**Build Instructions**
-
-1. **Install Rust:** If you don't have Rust installed, follow the instructions at [https://www.rust-lang.org/tools/install](https://www.rust-lang.org/tools/install)
-2. **Clone or download this project:** Get the code from the source repository.
-4. **Build:** Navigate to the project directory and run:
-   cargo build
-
-**Usage**
-```bash
-cargo run [extension1] [extension2] ...
 ```
-* [extension1], [extension2], ... : Optional list of file extensions to consider (e.g., "txt", "py", "rs"). If omitted, all file extensions will be processed.
-
-**Example**
-
-Count the tokens in all python and rust files in this repository.
-
-```bash
-cargo run py rs
+cargo run -- [-d <directory>] [<file_extension1> <file_extension2> ...]
 ```
+
+- `-d <directory>`: Specify the directory to scan (default is the current directory)
+- `<file_extension>`: Optionally specify one or more file extensions to filter (e.g., rs, txt, md)
+
+If no file extensions are provided, the tool will process all files in the specified directory.
+
+## Example
+
+```
+cargo run -- -d /path/to/your/project rs md txt
+```
+
+This command will scan the `/path/to/your/project` directory and count tokens, lines, and files for `.rs`, `.md`, and `.txt` files.
+
+## Output
+
+The tool will display the results for each file extension, sorted by token count in descending order. If multiple file extensions are processed, a total across all extensions will be shown at the end.
+
+Example output:
+```
+rs: 1,234,567 tokens, 23,456 lines, 78 files
+md: 234,567 tokens, 3,456 lines, 12 files
+txt: 34,567 tokens, 456 lines, 3 files
+Total: 1,503,701 tokens, 27,368 lines, 93 files
+```
+
+## Requirements
+
+- Rust (latest stable version recommended)
+- Dependencies (automatically managed by Cargo):
+  - tiktoken_rs
+  - rayon
+  - simple_tqdm
+  - num_format
+
+## Building
+
+To build the project, run:
+
+```
+cargo build --release
+```
+
+The compiled binary will be available in the `target/release` directory.
+
+## Notes
+
+- The tool uses the `cl100k_base` tokenizer from the `tiktoken_rs` library.
+- Error handling is implemented to skip files that cannot be read or processed.
+- The program utilizes parallel processing to improve performance on multi-core systems.
+
+Feel free to contribute or report issues on the project's GitHub repository.
