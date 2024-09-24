@@ -3,6 +3,8 @@ use std::{env, panic};
 use std::path::Path;
 use std::fs;
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::PathBuf;
 use std::io::Read;
 use rayon::prelude::*;
 use simple_tqdm::ParTqdm;
@@ -17,12 +19,14 @@ struct FileStats {
 struct Args {
     directory: String,
     file_extensions: Vec<String>,
+    ignore_paths: HashSet<PathBuf>,
 }
 
 fn parse_args() -> Args {
     let args: Vec<String> = env::args().collect();
     let mut directory = String::from(".");
     let mut file_extensions = Vec::new();
+    let mut ignore_paths = HashSet::new();
     let mut i = 1;
 
     while i < args.len() {
@@ -36,6 +40,18 @@ fn parse_args() -> Args {
                     std::process::exit(1);
                 }
             }
+            "-i" => {
+                if i + 1 < args.len() {
+                    let paths = args[i + 1].split(',').map(|s| s.trim());
+                    for path in paths {
+                        ignore_paths.insert(PathBuf::from(path));
+                    }
+                    i += 2;
+                } else {
+                    eprintln!("Error: -i (ignore) option requires a comma-separated list of paths");
+                    std::process::exit(1);
+                }
+            }
             _ => {
                 file_extensions.push(args[i].clone());
                 i += 1;
@@ -43,7 +59,7 @@ fn parse_args() -> Args {
         }
     }
 
-    Args { directory, file_extensions }
+    Args { directory, file_extensions, ignore_paths }
 }
 
 fn main() {
@@ -54,7 +70,7 @@ fn main() {
 
     let dir = Path::new(&args.directory);
     if dir.is_dir() {
-        let all_files: Vec<_> = find_files_parallel(dir, &args.file_extensions);
+        let all_files: Vec<_> = find_files_parallel(dir, &args.file_extensions, &args.ignore_paths);
 
         let file_stats: HashMap<String, FileStats> = all_files.into_par_iter()
             .tqdm()
@@ -97,14 +113,17 @@ fn main() {
         eprintln!("Error: The specified directory does not exist or is not a directory");
     }
 }
-fn find_files_parallel(dir: &Path, file_extensions: &Vec<String>) -> Vec<std::path::PathBuf> {
+
+fn find_files_parallel(dir: &Path, file_extensions: &Vec<String>, ignore_paths: &HashSet<PathBuf>) -> Vec<PathBuf> {
     match fs::read_dir(dir) {
-        Ok(dir) => dir.par_bridge() // Utilize rayon's par_bridge
+        Ok(dir) => dir.par_bridge()
             .flat_map(|entry| {
                 let entry = entry.expect("Unable to read entry");
                 let path = entry.path();
-                if path.is_dir() {
-                    find_files_parallel(&path, file_extensions)
+                if ignore_paths.iter().any(|ignore_path| path.to_string_lossy().contains(ignore_path.to_string_lossy().as_ref())) {
+                    vec![]
+                } else if path.is_dir() {
+                    find_files_parallel(&path, file_extensions, ignore_paths)
                 } else if file_extensions.is_empty()
                     || file_extensions.contains(
                     &path.extension().and_then(std::ffi::OsStr::to_str).unwrap_or("").to_string()
